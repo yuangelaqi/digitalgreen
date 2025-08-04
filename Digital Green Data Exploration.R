@@ -3,6 +3,7 @@ library(stringr)
 library(tidyverse)
 library(lubridate)
 library(ggplot2)
+library(tidyr)
 
 # Set your directory where the CSV files are located
 setwd("/Users/angelayu/Documents/RStudio TAF")
@@ -30,26 +31,52 @@ View(data_list)
 ####
 
 #Append all datasets
-combined_df <- bind_rows(data_list) #1759266 obs
+combined_df <- bind_rows(data_list)%>% 
+  distinct() #1283956 obs
+
+##########################################################
+
+#Daily counts for verification with Elia
+
+breakdown <- combined_df %>%
+  
+  
+  date_df <- combined_df %>%
+  mutate(date = sub(" .*","",created_on)) %>%
+  mutate(date = as.Date(date, format = "%Y-%m-%d"))
+
+date_group <- date_df%>%
+  group_by(date) %>%
+  summarise(
+    distinct_convo = n_distinct(conversation_id),
+    distinct_messages = n(),
+    .groups = "drop"
+  )
+
+write.csv(date_group, "daily_counts.csv", row.names = FALSE)
+
+##########################################################
+
+#combined_df <- combined_df %>% distinct() #
 
 # Number of total rows
-total_rows <- nrow(combined_df)
+#total_rows <- nrow(combined_df)
 
 # Number of unique rows
-unique_rows <- nrow(distinct(combined_df))
+#unique_rows <- nrow(distinct(combined_df))
 
 # Number of duplicates
-num_duplicates <- total_rows - unique_rows
+# num_duplicates <- total_rows - unique_rows
 
-print(paste("Number of duplicate rows:", num_duplicates)) #duplicate rows: 476008
+#print(paste("Number of duplicate rows:", num_duplicates)) #duplicate rows: 476008
 
 #Looking at distinct values of certain variables
-n_distinct(combined_df$user_id) #59436
-n_distinct(combined_df$user_country) #84
-unique(combined_df$land_holding)
-summary(dgdata$user_age)
-unique(dgdata$user_country)
-unique(dgdata$user_intent)
+# n_distinct(combined_df$user_id) #59436
+# n_distinct(combined_df$user_country) #84
+# unique(combined_df$land_holding)
+# summary(dgdata$user_age)
+# unique(dgdata$user_country)
+# unique(dgdata$user_intent)
 #View(dgdata %>% filter(user_intent == "Disappointment"))
 
 #Number of rows (or messages) of each farmer
@@ -59,28 +86,29 @@ dgdata_group <- combined_df%>%
 
 #Number of distinct users in this data set
 View(dgdata_group) #59436 distinct users / groups
-summary(dgdata_group$count) #min 1, median 8, mean 29.6, max 27507
+summary(dgdata_group$count) #min 1, median 6, mean 21.6, max 21402
 
 ##########################################################
 #Observing messages of user with high turns
-filtered_df <- filter(dgdata_group, count==27507)
+# filtered_df <- filter(dgdata_group, count==27507)
+# 
+# #user_id wth 27507 rows: 52a46aaf-ac27-4efb-af6d-a5e7133e7483
+# filtered_user <- filter(combined_df, user_id== "52a46aaf-ac27-4efb-af6d-a5e7133e7483")
+# 
+# #observe number of conversations of this user
+# n_distinct(filtered_user$conversation_id)  #1069
+# 
+# #Count of relevant messages
+# filtered_user %>% count(user_intent) #7600 our of 27507 messages are farming related
+# 
+# #Look at farming related messages
+# filtered_user %>% filter(user_intent == "Farming_related")
+# 
+# #Filter farming related messages and look at distinct ones
+# filtered_user %>%
+#   filter(user_intent == "Farming_related") %>%
+#   distinct(original_message)
 
-#user_id wth 27507 rows: 52a46aaf-ac27-4efb-af6d-a5e7133e7483
-filtered_user <- filter(combined_df, user_id== "52a46aaf-ac27-4efb-af6d-a5e7133e7483")
-
-#observe number of conversations of this user
-n_distinct(filtered_user$conversation_id)  #1069
-
-#Count of relevant messages
-filtered_user %>% count(user_intent) #7600 our of 27507 messages are farming related
-
-#Look at farming related messages
-filtered_user %>% filter(user_intent == "Farming_related")
-
-#Filter farming related messages and look at distinct ones
-filtered_user %>%
-  filter(user_intent == "Farming_related") %>%
-  distinct(original_message)
 ##########################################################
 
 #Calculate percentage of farmers who ask 1, 2, 3, etc. questions
@@ -89,9 +117,8 @@ sorted_df <- arrange(dgdata_group, count) %>%
   rename(number_of_messages = count)
 
 messagecount <- sorted_df%>%
-  count(count, sort = TRUE) %>%
-  rename(number_of_messages = count,
-         number_of_users = n)
+  count(number_of_messages, sort = TRUE) %>%
+  rename(number_of_users = n)
 
 #Plot number of messages vs. number of farmers
 ggplot(messagecount, aes(y = number_of_messages, x = number_of_users)) +
@@ -232,6 +259,79 @@ ggplot(long_data, aes(x = user_age, y = y, color = source)) +
 View(dgdata_age)
 #243281 users with age data#
 
+##########################################
+
+#Find average number of questions by country
+#59437
+dgdata_country <- combined_df %>%
+  filter(user_country!="") %>%
+  filter(user_country %in% c("Kenya", "Ethiopia", "India", "Nigeria")) %>%
+  group_by(user_country, user_id) %>%        # Count rows per user per country
+  summarise(user_row_count = n()) %>%
+  group_by(user_country) %>%                 # For each country, calculate mean rows per user
+  summarise(mean_rows_per_user = mean(user_row_count), n_users_country = n()) %>%
+  arrange(mean_rows_per_user)
+
+View(dgdata_country)
+
+#Nigeria and Kenya have average of 29 messages, Ethiopia 24, India only 9. 
+
+##########################################
+
+#Difference between "all practicing farmer" and "all extension worker"?
+
+unique(combined_df$user_role)
+n(combined_df$user_role)
+View(combined_df %>% filter(user_role == "role_selection_all_extension_worker")) #222,927
+View(combined_df %>% filter(user_role == "role_selection_all_practicing_farmer"))  #930,537
+
+dgdata_role <- combined_df %>%
+  filter(user_role!="") %>%
+  group_by(user_role, user_id) %>%        # Count rows per user per country
+  summarise(user_row_count = n()) %>%     #57439 distinct users whose role info is not missing
+  group_by(user_role) %>%                 # For each country, calculate mean rows per user
+  summarise(mean_rows_per_user = mean(user_row_count)) %>%
+  arrange(mean_rows_per_user)
+
+#Average for practicing is only 21, average for extension is 56. Why is extension significantly higher?
+
+#Observe if this difference holds true across countries?
+
+dgdata_role_country <- combined_df %>%
+  filter(user_role!="" & user_country!="" ) %>%
+  group_by(user_role, user_id, user_country) %>%        # Count rows per user per country
+  summarise(user_row_count = n()) %>%     #57439 distinct users whose role info is not missing
+  group_by(user_role, user_country) %>%                 # For each country, calculate mean rows per user
+  summarise(mean_rows_per_user = mean(user_row_count)) %>%
+  arrange(user_country)
+
+#Answer: yes this generally holds true by country as well
+
+
+
+##########################################
+
+#Does it vary by geography, for example, in Kenya?
+
+dgdata_kenya <- combined_df %>%
+  filter(user_country=="Kenya") %>%
+  group_by(user_role, user_id, user_geography_level3) %>%        # Count rows per user per country
+  summarise(user_row_count = n()) %>%     #57439 distinct users whose role info is not missing
+  group_by(user_role, user_geography_level3) %>%                 # For each country, calculate mean rows per user
+  summarise(mean_rows_per_user = mean(user_row_count)) %>%
+  arrange(user_geography_level3)
+
+#Not sure there is observable trend as not enough data atm
+
+##########################################
+
+#Does land holding matter?
+
+unique(combined_df$land_holding)
+table(combined_df$land_holding)
+
+
+
 
 ##########################################
 
@@ -245,12 +345,6 @@ high_users <- dgdata %>%
 View(high_users)
 
 
-
-
-
-
-
-
-
-
+Questions:
+  - difference between all practicing farmer and all extension worker?
 
