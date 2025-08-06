@@ -1,4 +1,14 @@
+# RStudio project files
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
+
+# Ignore large data exports from BigQuery
+data/bq-results-*.csv
+
+# Ignore intermediate cleaned dataset
+output/combined_df_clean.rds
+
+# macOS system files
+.DS_Store
